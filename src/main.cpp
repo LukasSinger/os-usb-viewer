@@ -1,9 +1,11 @@
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 #include <algorithm>
 #include <math.h>
 #include <unistd.h>
+#include <sys/mman.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
@@ -29,6 +31,7 @@ typedef struct USBEntry {
 
 typedef struct AppData {
     libusb_context *ctx;
+    bool *needsRefresh;
     SDL_Renderer *renderer;
     SDL_Window *window;
     TTF_Font *font;
@@ -42,6 +45,7 @@ typedef struct AppData {
 } AppData;
 
 void initialize(AppData *data_ptr);
+void *createSharedMemory(size_t size);
 void handleEvent(SDL_Event event, AppData *data_ptr);
 int usbHotplugHandler(libusb_context *ctx, libusb_device *device, libusb_hotplug_event event, void *user_data);
 void render(AppData *data_ptr);
@@ -63,10 +67,18 @@ int main(int argc, char *argv[]) {
 
     // Perform render loop
     SDL_Event event;
+    bool wasEvent = true;
     do {
-        render(&data);
-        SDL_WaitEvent(&event);
-        handleEvent(event, &data);
+        if (wasEvent) {
+            if (*data.needsRefresh == true) *data.needsRefresh = false;
+            render(&data);
+            handleEvent(event, &data);
+        }
+        wasEvent = SDL_WaitEventTimeout(&event, 50);
+        if (*data.needsRefresh == true) {
+            refreshDeviceView(&data);
+            wasEvent = true;
+        }
     } while (event.type != SDL_QUIT);
 
     // Clean up
@@ -84,6 +96,24 @@ int main(int argc, char *argv[]) {
 void initialize(AppData *data_ptr) {
     // Create window and renderer
     SDL_CreateWindowAndRenderer(WIDTH, HEIGHT, 0, &data_ptr->window, &data_ptr->renderer);
+
+    // Register hotplug event handler
+    if (libusb_has_capability(LIBUSB_CAP_HAS_HOTPLUG)) {
+        // Create shared memory for event flag
+        data_ptr->needsRefresh = reinterpret_cast<bool *>(createSharedMemory(sizeof(bool)));
+        // Create new process to notify main process about hotplugs
+        int pid = fork();
+        if (pid == 0) {
+            libusb_context *ctx;
+            libusb_init_context(&ctx, NULL, 0);
+            libusb_hotplug_register_callback(ctx, LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED | LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT, 0, LIBUSB_HOTPLUG_MATCH_ANY, LIBUSB_HOTPLUG_MATCH_ANY, LIBUSB_HOTPLUG_MATCH_ANY, usbHotplugHandler, NULL, NULL);
+            while (true) {
+                libusb_handle_events(ctx);
+                *data_ptr->needsRefresh = true;
+            }
+            exit(0);
+        }
+    } else printf("Error: hotplug event handling not supported on this system\n");
 
     // Initialize libusb
     int err = libusb_init_context(&data_ptr->ctx, NULL, 0);
@@ -110,11 +140,12 @@ void initialize(AppData *data_ptr) {
     // Create initial view
     data_ptr->scrollY = 0;
     refreshDeviceView(data_ptr);
-    if (libusb_has_capability(LIBUSB_CAP_HAS_HOTPLUG)) {
-        err = libusb_hotplug_register_callback(data_ptr->ctx, LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED | LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT, 0, LIBUSB_HOTPLUG_MATCH_ANY, LIBUSB_HOTPLUG_MATCH_ANY, LIBUSB_HOTPLUG_MATCH_ANY, usbHotplugHandler, data_ptr, NULL);
-        if (err) printf("Error registering hotplug event handler: %s\n", libusb_strerror(err));
-        else printf("Registered hotplug event handler\n");
-    } else printf("Error: hotplug event handling not supported on this system\n");
+}
+
+void *createSharedMemory(size_t size) {
+    int protection = PROT_READ | PROT_WRITE;
+    int visibility = MAP_SHARED | MAP_ANONYMOUS;
+    return mmap(NULL, size, protection, visibility, -1, 0);
 }
 
 void handleEvent(SDL_Event event, AppData *data_ptr) {
@@ -126,8 +157,6 @@ void handleEvent(SDL_Event event, AppData *data_ptr) {
 }
 
 int usbHotplugHandler(libusb_context *ctx, libusb_device *device, libusb_hotplug_event event, void *user_data) {
-    AppData *data_ptr = (AppData *)user_data;
-    refreshDeviceView(data_ptr);
     return 0;
 }
 
