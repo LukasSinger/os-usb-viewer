@@ -12,6 +12,8 @@ An SDL GUI for viewing connected USB devices.
 
 After compiling, open this directory in a terminal, then run `sudo ./bin/usbviewer`. (If you'd rather not give the application full privileges, set udev rules for the devices you want available to access, then run without sudo.)
 
+If running under a VM in VirtualBox, many devices (such as USB flash drives) will work without any special configuration. In order for some devices like mice and keyboards to appear, go to Settings > USB and add a blank filter with the blue circle button (leave all fields blank.) Such devices still may not appear until plugged in (potentially re-plugged if already plugged in.) Know that when doing so, VirtualBox will completely cede control of the devices to the guest OS: for example, if a mouse is replugged, the VirtualBox interface will not work and the mouse pointer will not render until the guest OS is shut down.
+
 ## Dependencies
 
 - [libusb](https://github.com/libusb/libusb) (USB library)
