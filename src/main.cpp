@@ -24,7 +24,6 @@ typedef struct RenderObj {
 } RenderObj;
 
 typedef struct USBEntry {
-    int type;
     unsigned char name[128];
     int nameSize;
     int speed;
@@ -128,15 +127,6 @@ void initialize(AppData *data_ptr) {
     SDL_Surface *usb_img_surf = IMG_Load("resrc/img/USB.png");
     data_ptr->usbTexture = SDL_CreateTextureFromSurface(data_ptr->renderer, usb_img_surf);
     SDL_FreeSurface(usb_img_surf);
-    SDL_Surface *hid_img_surf = IMG_Load("resrc/img/HID.png");
-    data_ptr->hidTexture = SDL_CreateTextureFromSurface(data_ptr->renderer, hid_img_surf);
-    SDL_FreeSurface(hid_img_surf);
-    SDL_Surface *storage_img_surf = IMG_Load("resrc/img/storage.png");
-    data_ptr->storageTexture = SDL_CreateTextureFromSurface(data_ptr->renderer, storage_img_surf);
-    SDL_FreeSurface(storage_img_surf);
-    SDL_Surface *webcam_img_surf = IMG_Load("resrc/img/webcam.png");
-    data_ptr->webcamTexture = SDL_CreateTextureFromSurface(data_ptr->renderer, webcam_img_surf);
-    SDL_FreeSurface(webcam_img_surf);
 
     // Create initial view
     data_ptr->scrollY = 0;
@@ -207,10 +197,7 @@ void refreshDeviceView(AppData *data_ptr) {
         int y = 10 + 32 * i;
         // Entry icon
         RenderObj *iconObj = new RenderObj();
-        if (entry->type == LIBUSB_CLASS_HID) iconObj->texture = data_ptr->hidTexture;
-        else if (entry->type == LIBUSB_CLASS_MASS_STORAGE) iconObj->texture = data_ptr->storageTexture;
-        else if (entry->type == LIBUSB_CLASS_VIDEO) iconObj->texture = data_ptr->webcamTexture;
-        else iconObj->texture = data_ptr->usbTexture;
+        iconObj->texture = data_ptr->usbTexture;
         iconObj->is_shared = true;
         iconObj->x = 10;
         iconObj->y = y + 2;
@@ -275,7 +262,6 @@ void listDevices(AppData *data_ptr) {
             continue;
         } else {
             usbEntry->nameSize = res;
-            usbEntry->type = desc.bDeviceClass;
             usbEntry->speed = libusb_get_device_speed(dev[i]);
             data_ptr->entries.push_back(usbEntry);
             libusb_close(handle);
