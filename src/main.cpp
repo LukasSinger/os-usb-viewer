@@ -26,6 +26,7 @@ typedef struct RenderObj {
 typedef struct USBEntry {
     int type;
     unsigned char name[128];
+    int nameSize;
     int speed;
 } USBEntry;
 
@@ -267,15 +268,18 @@ void listDevices(AppData *data_ptr) {
             printf("Error opening device %d: %s\n", i, libusb_strerror(err));
             continue;
         }
-        err = libusb_get_string_descriptor_ascii(handle, desc.iProduct, usbEntry->name, 128);
-        if (err < 0) {
-            printf("Error reading descriptor on device %d: %s\n", i, libusb_strerror(err));
+        int res = libusb_get_string_descriptor_ascii(handle, desc.iProduct, usbEntry->name, 128);
+        if (res < 0) {
+            printf("Error reading descriptor on device %d: %s\n", i, libusb_strerror(res));
+            libusb_close(handle);
             continue;
+        } else {
+            usbEntry->nameSize = res;
+            usbEntry->type = desc.bDeviceClass;
+            usbEntry->speed = libusb_get_device_speed(dev[i]);
+            data_ptr->entries.push_back(usbEntry);
+            libusb_close(handle);
         }
-        usbEntry->type = desc.bDeviceClass;
-        usbEntry->speed = libusb_get_device_speed(dev[i]);
-        data_ptr->entries.push_back(usbEntry);
-        libusb_close(handle);
     }
     libusb_free_device_list(dev, length);
     // Sort alphabetically (directories first)
@@ -286,7 +290,14 @@ void listDevices(AppData *data_ptr) {
 }
 
 bool compareDeviceEntries(const USBEntry *a, const USBEntry *b) {
-    return a->name < b->name;
+    for (int i = 0; i < 128; i++) {
+        if (i >= a->nameSize || i >= b->nameSize) break;
+        if (a->name[i] < b->name[i]) return true;
+        else if (a->name[i] > b->name[i]) return false;
+    }
+    // Shortest string is first
+    if (a->nameSize > b->nameSize) return true;
+    else return false;
 }
 
 void destroyView(AppData *data_ptr) {
