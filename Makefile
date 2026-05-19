@@ -8,7 +8,7 @@ SRCDIR= src
 OBJDIR= obj
 BINDIR= bin
 
-OBJS= $(addprefix $(OBJDIR)/, main.o)
+OBJS= $(addprefix $(OBJDIR)/, main.o audio.o)
 EXEC= $(addprefix $(BINDIR)/, usbviewer)
 
 # CREATE DIRECTORIES (IF DON'T ALREADY EXIST)

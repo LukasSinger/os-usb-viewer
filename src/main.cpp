@@ -10,6 +10,7 @@
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
 #include <libusb-1.0/libusb.h>
+#include "audio.h"
 
 #define WIDTH 800
 #define HEIGHT 100
@@ -32,6 +33,7 @@ typedef struct USBEntry {
 typedef struct AppData {
     libusb_context *ctx;
     bool *needsRefresh;
+    int *lastEvent;
     SDL_Renderer *renderer;
     SDL_Window *window;
     TTF_Font *font;
@@ -63,6 +65,9 @@ int main(int argc, char *argv[]) {
     // Initialize SDL2 (including image and font loaders)
     SDL_Init(SDL_INIT_VIDEO);
     IMG_Init(IMG_INIT_PNG);
+    if (SDL_Init(SDL_INIT_AUDIO) < 0) {
+        printf("SDL couldn't initialize audio (probably because of sudo)\n");
+    }
     TTF_Init();
 
     // Initialize application
@@ -80,6 +85,8 @@ int main(int argc, char *argv[]) {
         }
         wasEvent = SDL_WaitEventTimeout(&event, 50);
         if (*data.needsRefresh == true) {
+            if (*data.lastEvent == 1) playSound("resrc/audio/in.wav", SDL_MIX_MAXVOLUME / 2);
+            else playSound("resrc/audio/out.wav", SDL_MIX_MAXVOLUME / 2);
             refreshDeviceView(&data);
             wasEvent = true;
         }
@@ -105,12 +112,13 @@ void initialize(AppData *data_ptr) {
     if (libusb_has_capability(LIBUSB_CAP_HAS_HOTPLUG)) {
         // Create shared memory for event flag
         data_ptr->needsRefresh = reinterpret_cast<bool *>(createSharedMemory(sizeof(bool)));
+        data_ptr->lastEvent = reinterpret_cast<int *>(createSharedMemory(sizeof(int)));
         // Create new process to notify main process about hotplugs
         int pid = fork();
         if (pid == 0) {
             libusb_context *ctx;
             libusb_init_context(&ctx, NULL, 0);
-            libusb_hotplug_register_callback(ctx, LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED | LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT, 0, LIBUSB_HOTPLUG_MATCH_ANY, LIBUSB_HOTPLUG_MATCH_ANY, LIBUSB_HOTPLUG_MATCH_ANY, usbHotplugHandler, NULL, NULL);
+            libusb_hotplug_register_callback(ctx, LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED | LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT, 0, LIBUSB_HOTPLUG_MATCH_ANY, LIBUSB_HOTPLUG_MATCH_ANY, LIBUSB_HOTPLUG_MATCH_ANY, usbHotplugHandler, data_ptr->lastEvent, NULL);
             while (true) {
                 libusb_handle_events(ctx);
                 *data_ptr->needsRefresh = true;
@@ -131,6 +139,9 @@ void initialize(AppData *data_ptr) {
     SDL_Surface *usb_img_surf = IMG_Load("resrc/img/USB.png");
     data_ptr->usbTexture = SDL_CreateTextureFromSurface(data_ptr->renderer, usb_img_surf);
     SDL_FreeSurface(usb_img_surf);
+
+    // Initialize audio
+    initAudio();
 
     // Create initial view
     data_ptr->scrollY = 0;
@@ -177,6 +188,9 @@ void handleEvent(SDL_Event event, AppData *data_ptr) {
 }
 
 int usbHotplugHandler(libusb_context *ctx, libusb_device *device, libusb_hotplug_event event, void *user_data) {
+    int *lastEvent = (int *)user_data;
+    if (event == 2) *lastEvent = 0;
+    else *lastEvent = 1;
     return 0;
 }
 
@@ -344,4 +358,5 @@ void quit(AppData *data_ptr) {
     destroyView(data_ptr);
     SDL_DestroyTexture(data_ptr->usbTexture);
     TTF_CloseFont(data_ptr->font);
+    endAudio();
 }
