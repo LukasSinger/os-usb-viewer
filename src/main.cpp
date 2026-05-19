@@ -12,7 +12,7 @@
 #include <libusb-1.0/libusb.h>
 
 #define WIDTH 800
-#define HEIGHT 400
+#define HEIGHT 100
 
 typedef struct RenderObj {
     SDL_Texture *texture;
@@ -39,7 +39,10 @@ typedef struct AppData {
     SDL_Texture *hidTexture;
     SDL_Texture *storageTexture;
     SDL_Texture *webcamTexture;
-    int scrollY;
+    double scrollY;
+    bool isDraggingScroll = false;
+    int scrollDragOffset = 0;
+    SDL_Rect scrollRect;
     std::vector<RenderObj *> objs;
     std::vector<USBEntry *> entries;
 } AppData;
@@ -52,6 +55,7 @@ void render(AppData *data_ptr);
 void refreshDeviceView(AppData *data_ptr);
 void listDevices(AppData *data_ptr);
 bool compareDeviceEntries(const USBEntry *a, const USBEntry *b);
+bool pointInRect(int x, int y, SDL_Rect &rect);
 void destroyView(AppData *data_ptr);
 void quit(AppData *data_ptr);
 
@@ -140,10 +144,35 @@ void *createSharedMemory(size_t size) {
 }
 
 void handleEvent(SDL_Event event, AppData *data_ptr) {
-    if (event.type == SDL_MOUSEWHEEL) {
-        int targetScroll = data_ptr->scrollY - event.wheel.y * 32;
+    bool clickIsScroll = event.type == SDL_MOUSEMOTION && event.motion.state > 0;
+    if (event.type == SDL_MOUSEWHEEL || clickIsScroll) {
+        // Scroll
         int yBound = data_ptr->entries.size() * 32 - HEIGHT;
+        float targetScroll;
+        if (event.type == SDL_MOUSEWHEEL) {
+            // With wheel
+            targetScroll = data_ptr->scrollY - event.wheel.y * 32;
+        } else if (data_ptr->isDraggingScroll || pointInRect(event.motion.x, event.motion.y, data_ptr->scrollRect)) {
+            // By dragging
+            data_ptr->isDraggingScroll = true;
+            if (data_ptr->scrollDragOffset == 0) data_ptr->scrollDragOffset = event.motion.y - data_ptr->scrollRect.y;
+            targetScroll = (float)(event.motion.y - data_ptr->scrollDragOffset) / (HEIGHT - data_ptr->scrollRect.h) * yBound;
+        } else {
+            SDL_Rect scrollBox;
+            scrollBox.w = 11;
+            scrollBox.h = HEIGHT;
+            scrollBox.x = WIDTH - 13;
+            scrollBox.y = 0;
+            if (pointInRect(event.motion.x, event.motion.y, scrollBox)) {
+                // Directly to pointer
+                data_ptr->scrollDragOffset = (float)data_ptr->scrollRect.h / 2;
+                targetScroll = ((float)event.motion.y - data_ptr->scrollDragOffset) / (HEIGHT - data_ptr->scrollRect.h) * yBound;
+            } else return;
+        }
         data_ptr->scrollY = fmax(0, fmin(targetScroll, yBound));
+    } else {
+        data_ptr->isDraggingScroll = false;
+        data_ptr->scrollDragOffset = 0;
     }
 }
 
@@ -171,13 +200,22 @@ void render(AppData *data_ptr) {
         SDL_RenderCopy(data_ptr->renderer, obj->texture, NULL, &rect);
     }
 
-    // Draw solid rectangle (teal)
-    // rect.x = 440;
-    // rect.y = 320;
-    // rect.w = 40;
-    // rect.h = 30;
-    // SDL_SetRenderDrawColor(renderer, 0, 128, 128, 255);
-    // SDL_RenderFillRect(renderer, &rect);
+    // Draw separator lines
+    SDL_SetRenderDrawColor(data_ptr->renderer, 0, 128, 128, 255);
+    for (int i = 1; i < data_ptr->entries.size(); i++) {
+        int y = 32 * i - data_ptr->scrollY;
+        SDL_RenderDrawLineF(data_ptr->renderer, 0, y, WIDTH - 16, y);
+    }
+
+    // Draw scroll bar
+    float scrollPercent = (float)data_ptr->scrollY / (data_ptr->entries.size() * 32);
+    float screenPercent = (float)HEIGHT / (data_ptr->entries.size() * 32);
+    data_ptr->scrollRect.w = 11;
+    data_ptr->scrollRect.h = screenPercent * HEIGHT;
+    data_ptr->scrollRect.x = WIDTH - 13;
+    data_ptr->scrollRect.y = scrollPercent * HEIGHT;
+    SDL_SetRenderDrawColor(data_ptr->renderer, 128, 128, 128, 255);
+    SDL_RenderFillRect(data_ptr->renderer, &data_ptr->scrollRect);
 
     // Display rendered frame
     SDL_RenderPresent(data_ptr->renderer);
@@ -194,7 +232,7 @@ void refreshDeviceView(AppData *data_ptr) {
     SDL_Color bgColor = { 235, 235, 235 };
     for (int i = 0; i < data_ptr->entries.size(); i++) {
         USBEntry *entry = data_ptr->entries.at(i);
-        int y = 10 + 32 * i;
+        int y = 5 + 32 * i;
         // Entry icon
         RenderObj *iconObj = new RenderObj();
         iconObj->texture = data_ptr->usbTexture;
@@ -284,6 +322,14 @@ bool compareDeviceEntries(const USBEntry *a, const USBEntry *b) {
     // Shortest string is first
     if (a->nameSize > b->nameSize) return true;
     else return false;
+}
+
+bool pointInRect(int x, int y, SDL_Rect &rect) {
+    if (x > rect.x && x < rect.x + rect.w &&
+        y > rect.y && y < rect.y + rect.h) {
+        return true;
+    }
+    return false;
 }
 
 void destroyView(AppData *data_ptr) {
