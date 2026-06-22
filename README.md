@@ -23,4 +23,4 @@ If running under a VM in VirtualBox, many devices (such as USB flash drives) wil
 - [SDL](https://github.com/libsdl-org/SDL) (GUI)
 - [Simple-SDL2-Audio](https://github.com/jakebesworth/Simple-SDL2-Audio) (audio library)
 - [Inter](https://github.com/rsms/inter) (font)
-- Based on [@tmarrinan's](https://github.com/tmarrinan) file explorer GUI
+- Based on [@tmarrinan's file explorer GUI template](https://github.com/tmarrinan/os-fileexplorer)

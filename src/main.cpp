@@ -1,3 +1,8 @@
+/*
+Based on @tmarrinan's file explorer GUI template: https://github.com/tmarrinan/os-fileexplorer
+Modified by Lukas Singer (May 2026)
+*/
+
 #include <iostream>
 #include <string>
 #include <thread>
